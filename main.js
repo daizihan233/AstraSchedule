@@ -707,6 +707,15 @@ ipcMain.on('getWeekIndex', (e, arg) => {
             }
         },
         {
+            label: '始终缩小',
+            type: 'checkbox',
+            checked: store.get('isAlwaysMinimized', false),
+            click: (e) => {
+                store.set('isAlwaysMinimized', e.checked)
+                win.webContents.send('AlwaysMinimized', e.checked)
+            }
+        },
+        {
             label: '上课隐藏',
             type: 'checkbox',
             checked: store.get('isDuringClassHidden', true),

@@ -60,6 +60,7 @@ let defaultBannerHeight = null
 let root = null;
 let isClassCountdown = true
 let isClassHidden = true
+let isAlwaysMinimized = false // 始终缩小状态
 let isSecureConnection = true // 渲染态标记
 let lastScheduleData = {
     currentHighlight: {
@@ -331,7 +332,7 @@ function setCountdownerContent() {
             miniCountdown.style.display = 'none'
             if (globalContainer) globalContainer.style.display = 'none'
         }
-    } else if (isForegroundFullscreen) {
+    } else if (isForegroundFullscreen || isAlwaysMinimized) {
         countdownContainer.style.display = 'none'
         miniCountdown.style.display = 'block'
         if (globalContainer) globalContainer.style.display = 'none'
@@ -464,7 +465,7 @@ let lastShouldDetectFullscreen = null;
 
 function notifyMainProcessDetectionState() {
     try {
-        const shouldDetect = !(isClassHidden && scheduleData.currentHighlight.type === 'current');
+        const shouldDetect = !((isClassHidden && scheduleData.currentHighlight.type === 'current') || isAlwaysMinimized);
         // 只在状态真正改变时才发送 IPC 消息
         if (shouldDetect !== lastShouldDetectFullscreen) {
             lastShouldDetectFullscreen = shouldDetect;
@@ -806,6 +807,11 @@ ipcRenderer.on('ClassCountdown', (e, arg) => {
 
 ipcRenderer.on('ClassHidden', (e, arg) => {
     isClassHidden = arg
+    tick(true)
+})
+
+ipcRenderer.on('AlwaysMinimized', (e, arg) => {
+    isAlwaysMinimized = arg
     tick(true)
 })
 
