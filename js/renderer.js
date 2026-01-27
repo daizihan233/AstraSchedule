@@ -258,13 +258,13 @@ function initBannerMarquee() {
 
 function changeScheduleClass(classHtml, inner) {
     if (scheduleData.currentHighlight.isEnd)
-        classHtml += `<div class="class" id="highlighted" style="color:rgba(166,166,166);">${inner}</div>`
+        classHtml += `<div class="class" id="highlighted" style="color:rgba(166,166,166);">${formatFullName(inner)}</div>`
     else if (scheduleData.currentHighlight.type === 'current')
         // 根据网络连接状态设置当前课程的类
-        classHtml += `<div class="class current ${wsConnected ? '' : 'disconnected'}" id="highlighted">${inner}</div>`
+        classHtml += `<div class="class current ${wsConnected ? '' : 'disconnected'}" id="highlighted">${formatFullName(inner)}</div>`
     else if (scheduleData.currentHighlight.type === 'upcoming')
         // 根据网络连接状态设置即将到来课程的类
-        classHtml += `<div class="class upcoming ${wsConnected ? '' : 'disconnected'}" id="highlighted">${inner}</div>`
+        classHtml += `<div class="class upcoming ${wsConnected ? '' : 'disconnected'}" id="highlighted">${formatFullName(inner)}</div>`
     return classHtml
 }
 
@@ -275,9 +275,9 @@ function setScheduleClass() {
         if (scheduleData.currentHighlight.index === i) {
             classHtml = changeScheduleClass(classHtml, inner)
         } else if (scheduleData.currentHighlight.index > i)
-            classHtml += `<div class="class" style="color:rgba(166,166,166);">${inner}</div>`
+            classHtml += `<div class="class" style="color:rgba(166,166,166);">${formatFullName(inner)}</div>`
         else
-            classHtml += `<div class="class">${inner}</div>`
+            classHtml += `<div class="class">${formatFullName(inner)}</div>`
         if (scheduleData.divider.includes(i))
             classHtml += '<div class="divider"></div>'
     }
@@ -298,8 +298,14 @@ function setBackgroundDisplay() {
     }
 }
 
+// 格式化课程名称，将"@"符号替换为下标标签
+function formatFullName(fullName) {
+    if (!fullName || typeof fullName !== 'string') return fullName;
+    return fullName.replace(/@(.+)/g, '<sub>$1</sub>');
+}
+
 function setCountdownerContent() {
-    currentFullName.innerText = scheduleData.currentHighlight.fullName;
+    currentFullName.innerHTML = formatFullName(scheduleData.currentHighlight.fullName);
     // 根据连接状态和课程类型设置颜色
     if (scheduleData.currentHighlight.type === 'current') {
         // 当前课程：如果连接正常为绿色，连接异常时为橙色
@@ -321,7 +327,7 @@ function setCountdownerContent() {
                 // 仅渲染文本，避免对 currentFullName.innerText 的副作用
                 // 根据网络连接状态设置currentClass的颜色
                 const currentClassColor = wsConnected ? 'rgba(0, 255, 10, 1)' : 'rgba(255, 165, 0, 1)';
-                miniCountdown.innerHTML = `<div class="currentClass" style="color: ${currentClassColor}">${scheduleData.currentHighlight.fullName}</div><div class="countdown" style="margin-left:5px">${scheduleData.currentHighlight.countdownText}</div>`
+                miniCountdown.innerHTML = `<div class="currentClass" style="color: ${currentClassColor}">${formatFullName(scheduleData.currentHighlight.fullName)}</div><div class="countdown" style="margin-left:5px">${scheduleData.currentHighlight.countdownText}</div>`
             } else { // 上课 并且开启了倒计时 并且 不隐藏主体 -> 正常计时
                 countdownContainer.style.display = 'block'
                 miniCountdown.style.display = 'none'
@@ -338,7 +344,7 @@ function setCountdownerContent() {
         if (globalContainer) globalContainer.style.display = 'none'
         const currentClassColor = wsConnected ? 'rgba(255, 255, 5, 1)' : 'rgba(255, 165, 0, 1)';
         const nextClass = scheduleData.nextScheduleName || '明天';  // “明天” 意味着今天的课程已经结束
-        miniCountdown.innerHTML = `<div class="currentClass" style="color: ${currentClassColor}">${scheduleData.currentHighlight.fullName}</div><div class="countdown" style="margin-left:5px">${scheduleData.currentHighlight.countdownText}</div> | 下一节：<span class="class upcoming" id="highlighted">${nextClass}</span>`
+        miniCountdown.innerHTML = `<div class="currentClass" style="color: ${currentClassColor}">${formatFullName(scheduleData.currentHighlight.fullName)}</div><div class="countdown" style="margin-left:5px">${scheduleData.currentHighlight.countdownText}</div> | 下一节：<span class="class upcoming" id="highlighted">${formatFullName(nextClass)}</span>`
     } else {
         countdownContainer.style.display = 'block';
         miniCountdown.style.display = 'none'
@@ -641,7 +647,9 @@ function setScheduleDialog() {
         options: {
             title: '更改课表',
             message: `请选择你要更改的课程序号`,
-            buttons: scheduleData.scheduleArray.map((value, index) => { return `第 ${index + 1} 节: ${scheduleConfig.subject_name[value]}` }),
+            buttons: scheduleData.scheduleArray.map((value, index) => {
+                return `第 ${index + 1} 节: ${formatFullName(scheduleConfig.subject_name[value])}`
+            }),
             cancelId: -1,
             defaultId: scheduleData.currentHighlight.index
         }
@@ -657,8 +665,10 @@ ipcRenderer.on('getSelectedClassIndex', (e, arg) => {
         classes: classes,
         options: {
             title: '更改课表',
-            message: `将 第 ${arg.index + 1} 节 ${scheduleConfig.subject_name[scheduleData.scheduleArray[arg.index]]} 更改为:`,
-            buttons: classes.map((value) => { return scheduleConfig.subject_name[value] }),
+            message: `将 第 ${arg.index + 1} 节 ${formatFullName(scheduleConfig.subject_name[scheduleData.scheduleArray[arg.index]])} 更改为:`,
+            buttons: classes.map((value) => {
+                return formatFullName(scheduleConfig.subject_name[value])
+            }),
             cancelId: -1,
         }
     })
