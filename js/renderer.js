@@ -290,9 +290,8 @@ function setScheduleClass() {
 function setBackgroundDisplay() {
     let elements = document.getElementsByClassName('background')
     let element;
-    // 如果是当前课程且开启了隐藏，或者前台有窗口且是休息时间，则隐藏背景
-    const shouldHide = (scheduleData.currentHighlight.type === 'current' && isClassHidden) ||
-        (isForegroundFullscreen && scheduleData.currentHighlight.type !== 'current');
+    // 如果是当前课程且开启了隐藏，则隐藏背景
+    const shouldHide = (scheduleData.currentHighlight.type === 'current' && isClassHidden);
     for (element of elements) {
         element.style.visibility = shouldHide ? 'hidden' : 'visible'
     }
@@ -338,7 +337,7 @@ function setCountdownerContent() {
             miniCountdown.style.display = 'none'
             if (globalContainer) globalContainer.style.display = 'none'
         }
-    } else if (isForegroundFullscreen || isAlwaysMinimized) {
+    } else if (isAlwaysMinimized) {
         countdownContainer.style.display = 'none'
         miniCountdown.style.display = 'block'
         if (globalContainer) globalContainer.style.display = 'none'
@@ -452,8 +451,8 @@ function tick(reset = false) {
         })
         setSidebar()
         setBackgroundDisplay()
-        // 课程状态变化时，通知主进程更新全屏检测状态
-        notifyMainProcessDetectionState();
+        // 状态改变时（进入下一个日程），再次调用 getScheduleFromCloud
+        ipcRenderer.send('getScheduleFromCloud');
     } else if (lastScheduleData.wsConnected !== wsConnected) {
         // 即使没有课程变化，如果连接状态变化，也需要更新颜色
         updateClassHighlightColors(wsConnected);
@@ -462,24 +461,6 @@ function tick(reset = false) {
     // noinspection JSUnresolvedReference
     lastScheduleData = $.extend(true, {}, scheduleData);
     lastScheduleData.wsConnected = wsConnected; // 保存连接状态用于比较
-}
-
-// 通知主进程当前是否应该检测全屏状态
-// 当开启"上课隐藏"且处于上课状态时，不需要检测全屏
-// 只在状态真正改变时才发送 IPC 消息
-let lastShouldDetectFullscreen = null;
-
-function notifyMainProcessDetectionState() {
-    try {
-        const shouldDetect = !((isClassHidden && scheduleData.currentHighlight.type === 'current') || isAlwaysMinimized);
-        // 只在状态真正改变时才发送 IPC 消息
-        if (shouldDetect !== lastShouldDetectFullscreen) {
-            lastShouldDetectFullscreen = shouldDetect;
-            ipcRenderer.send('fullscreen-detection-state', {shouldDetect});
-        }
-    } catch (e) {
-        console.error('[Renderer] Failed to notify main process about detection state:', e);
-    }
 }
 
 // 使用对齐系统秒的调度，避免 20ms 轮询
@@ -879,45 +860,38 @@ ipcRenderer.on('updateWeather', () => {
 })
 
 ipcRenderer.on('broadcastSyncConfig', () => {
+
     ipcRenderer.send('RequestSyncConfig', false)
+
 })
 
+
 // WebSocket连接状态处理
+
+
 let wsConnected = true; // 默认为连接状态
 
-// 前台窗口全屏状态处理
-let isForegroundFullscreen = false; // 默认为非全屏状态
 
-ipcRenderer.on('foreground-fullscreen-changed', (e, arg) => {
-    const wasFullscreen = isForegroundFullscreen;
-    isForegroundFullscreen = arg.isFullscreen;
 
-    console.log('[Renderer] Foreground fullscreen status changed:', isForegroundFullscreen);
-
-    // 当状态变化时，可以在此处调整 UI 显示
-    // 比如全屏时显示简略信息，非全屏时显示详细信息
-    updateUIForFullscreenStatus(isForegroundFullscreen);
-});
-
-// 根据前台窗口全屏状态更新 UI
-function updateUIForFullscreenStatus(isFullscreen) {
-    console.log('[Renderer] Updating UI for fullscreen status:', isFullscreen);
-    // 状态变化时刷新 UI
-    tick(true);
-}
 
 
 ipcRenderer.on('ws-status', (e, arg) => {
     const wasConnected = wsConnected;
     wsConnected = arg.connected;
 
-    console.log('[Renderer] WebSocket status changed:', wsConnected);
+    // 检查是否强制保持绿色显示
+    const forceGreen = arg.forceGreen || false;
+
+    // 设置全局标志，表示 WebSocket 已被禁用并应保持绿色显示
+    window.websocketDisabled = forceGreen;
+
+    console.log('[Renderer] WebSocket status changed:', wsConnected, 'forceGreen:', forceGreen, 'websocketDisabled:', window.websocketDisabled);
 
     // 如果是连接状态变化，更新UI状态
-    if (wasConnected !== wsConnected) {
-        if (wsConnected) {
-            // 连接恢复，更新UI颜色为绿色
-            console.log('[Renderer] WebSocket reconnected, updating UI to show connected state');
+    if (wasConnected !== wsConnected || forceGreen) {
+        if (wsConnected || forceGreen) {
+            // 连接恢复或强制绿色，更新UI颜色为绿色
+            console.log('[Renderer] WebSocket reconnected or forceGreen, updating UI to show connected state');
             updateUIColorsForConnectionStatus(true);
         } else {
             // 连接断开，更新UI颜色为橙色
@@ -929,13 +903,21 @@ ipcRenderer.on('ws-status', (e, arg) => {
 
 // 根据连接状态更新UI颜色
 function updateUIColorsForConnectionStatus(connected) {
-    console.log('[Renderer] Updating UI colors for connection status:', connected);
+    // 检查是否应强制显示为绿色
+    const shouldForceGreen = window.websocketDisabled || false;
+    console.log('[Renderer] Updating UI colors for connection status:', connected, 'forceGreen:', shouldForceGreen);
 
     if (currentFullName && scheduleData?.currentHighlight?.type) {
         if (scheduleData.currentHighlight.type === 'current') {
-            // 根据连接状态设置颜色：连接时为绿色，断开时为橙色
-            currentFullName.style.color = connected ? 'rgba(0, 255, 10, 1)' : 'rgba(255, 165, 0, 1)';
-            console.log('[Renderer] Set currentFullName color to', connected ? 'green' : 'orange');
+            if (shouldForceGreen) {
+                // 如果强制绿色，总是显示绿色
+                currentFullName.style.color = 'rgba(0, 255, 10, 1)';
+                console.log('[Renderer] Set currentFullName color to green (forced)');
+            } else {
+                // 根据连接状态设置颜色：连接时为绿色，断开时为橙色
+                currentFullName.style.color = connected ? 'rgba(0, 255, 10, 1)' : 'rgba(255, 165, 0, 1)';
+                console.log('[Renderer] Set currentFullName color to', connected ? 'green' : 'orange');
+            }
         } else {
             currentFullName.style.color = 'rgba(255, 255, 5, 1)'; // 非当前课程保持黄色
         }
@@ -944,36 +926,44 @@ function updateUIColorsForConnectionStatus(connected) {
     }
 
     // 更新课表高亮颜色
-    updateClassHighlightColors(connected);
+    updateClassHighlightColors(connected, shouldForceGreen);
 }
 
 // 更新miniCountdown中的currentClass颜色
 function updateMiniCountdownColor(connected) {
+    // 检查是否应强制显示为绿色
+    const shouldForceGreen = window.websocketDisabled || false;
+    const effectiveConnected = shouldForceGreen ? true : connected;
+
     if (miniCountdown && miniCountdown.style.display !== 'none') {
         const currentClassElement = miniCountdown.querySelector('.currentClass');
         if (currentClassElement) {
-            currentClassElement.style.color = connected ? 'rgba(0, 255, 10, 1)' : 'rgba(255, 165, 0, 1)';
-            console.log('[Renderer] Updated miniCountdown currentClass color to', connected ? 'green' : 'orange');
+            currentClassElement.style.color = effectiveConnected ? 'rgba(0, 255, 10, 1)' : 'rgba(255, 165, 0, 1)';
+            console.log('[Renderer] Updated miniCountdown currentClass color to', effectiveConnected ? 'green' : 'orange');
         }
     }
 }
 
 // 更新课表高亮颜色
-function updateClassHighlightColors(connected) {
+function updateClassHighlightColors(connected, forceGreen = false) {
+    // 检查是否应强制显示为绿色
+    const shouldForceGreen = forceGreen || window.websocketDisabled || false;
+    const effectiveConnected = shouldForceGreen ? true : connected;
+
+    console.log('[Renderer] Updating highlighted element color for connection status:', connected, 'forceGreen:', forceGreen, 'effectiveConnected:', effectiveConnected);
+
     const highlightedElement = document.getElementById('highlighted');
     if (!highlightedElement) {
         console.log('[Renderer] No highlighted element found, cannot update class colors');
         return;
     }
 
-    console.log('[Renderer] Updating highlighted element color for connection status:', connected);
-
     if (highlightedElement.classList.contains('current')) {
-        highlightedElement.style.color = connected ? 'rgba(0, 255, 10, 1)' : 'rgba(255, 165, 0, 1)';
-        console.log('[Renderer] Set current class color to', connected ? 'green' : 'orange');
+        highlightedElement.style.color = effectiveConnected ? 'rgba(0, 255, 10, 1)' : 'rgba(255, 165, 0, 1)';
+        console.log('[Renderer] Set current class color to', effectiveConnected ? 'green' : 'orange');
     } else if (highlightedElement.classList.contains('upcoming')) {
         // 对于即将到来的课程，根据连接状态设置颜色和动画
-        if (connected) {
+        if (effectiveConnected) {
             // 移除disconnected类以使用绿色闪烁动画
             highlightedElement.classList.remove('disconnected');
             highlightedElement.style.color = 'rgba(0, 255, 10, 1)';
@@ -991,7 +981,7 @@ function updateClassHighlightColors(connected) {
     }
 
     // 同时更新miniCountdown的颜色
-    updateMiniCountdownColor(connected);
+    updateMiniCountdownColor(effectiveConnected);
 }
 
 // 更新ToolTip显示连接状态
