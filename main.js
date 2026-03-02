@@ -394,7 +394,7 @@ function checkNetworkConnection() {
 
         // 尝试连接到服务器的根路径（轻量级检查）
         const request = net.request({
-            method: 'HEAD',
+            method: 'GET',
             url: `${agreement}://${server}/`,
             timeout: 5000
         })
@@ -440,7 +440,7 @@ function checkNetworkConnection() {
 }
 
 // 重试获取课表数据的辅助函数
-async function getScheduleFromCloudWithRetry(maxRetries = 3) {
+async function getScheduleFromCloudWithRetry(maxRetries = 10) {
     for (let i = 0; i < maxRetries; i++) {
         const connected = await checkNetworkConnection()
         if (connected) {
@@ -551,7 +551,7 @@ app.whenReady().then(() => {
     Menu.setApplicationMenu(null)
     setupAutoUpdater()
     // 先进行网络连接检查，然后获取课表数据
-    getScheduleFromCloudWithRetry(3);
+    getScheduleFromCloudWithRetry();
     win.webContents.on('did-finish-load', () => {
         win.webContents.send('getWeekIndex');
 
