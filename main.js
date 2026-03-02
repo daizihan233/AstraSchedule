@@ -99,7 +99,7 @@ const INITIAL_RECONNECT_DELAY = 1000; // 初始重连延迟1秒
 
 function scheduleReconnect() {
     // 检查是否禁用了 WebSocket 连接
-    if (ws && ws.disableReconnect) {
+    if (ws?.disableReconnect) {
         console.log('WebSocket reconnection is disabled, not reconnecting');
         return;
     }
@@ -264,7 +264,9 @@ function connect(rejectUnauthorized = true, resetErrorFlag = false) {
 
     })
 }
-connect();
+
+// 启动时不立即连接 WebSocket，延迟到第一次获取课表数据后
+// connect(); 已移除，改为在 getScheduleFromCloud() 后根据 supportWebSocket 判断
 
 // 防止多开
 const gotTheLock = app.requestSingleInstanceLock({ key: 'classSchedule' })
@@ -380,6 +382,85 @@ function setupAutoUpdater() {
 
 // 存储当前版本号
 let currentVersion = 0;
+// 标志：是否已经进行过第一次课表数据获取和 WebSocket 初始化
+let hasInitializedWebSocket = false;
+
+// 检查网络连接
+function checkNetworkConnection() {
+    return new Promise((resolve) => {
+        const {net} = require('electron')
+        const {agreement} = getProtocols()
+        const server = getServer()
+
+        // 尝试连接到服务器的根路径（轻量级检查）
+        const request = net.request({
+            method: 'HEAD',
+            url: `${agreement}://${server}/`,
+            timeout: 5000
+        })
+
+        let isResolved = false
+
+        request.on('response', (response) => {
+            if (!isResolved) {
+                isResolved = true
+                console.log('[Network] Connection check successful, status:', response.statusCode)
+                resolve(true)
+            }
+        })
+
+        request.on('error', (err) => {
+            if (!isResolved) {
+                isResolved = true
+                console.error('[Network] Connection check failed:', err?.message || err)
+                resolve(false)
+            }
+        })
+
+        request.on('abort', () => {
+            if (!isResolved) {
+                isResolved = true
+                console.warn('[Network] Connection check aborted')
+                resolve(false)
+            }
+        })
+
+        // 5 秒超时后强制返回 false
+        setTimeout(() => {
+            if (!isResolved) {
+                isResolved = true
+                console.warn('[Network] Connection check timeout')
+                request.abort()
+                resolve(false)
+            }
+        }, 5000)
+
+        request.end()
+    })
+}
+
+// 重试获取课表数据的辅助函数
+async function getScheduleFromCloudWithRetry(maxRetries = 3) {
+    for (let i = 0; i < maxRetries; i++) {
+        const connected = await checkNetworkConnection()
+        if (connected) {
+            console.log(`[Network] Attempt ${i + 1}/${maxRetries}: Network connected, fetching schedule...`)
+            getScheduleFromCloud()
+            return true
+        } else {
+            console.warn(`[Network] Attempt ${i + 1}/${maxRetries}: Network not available`)
+            if (i < maxRetries - 1) {
+                console.log(`[Network] Retrying in 2 seconds...`)
+                await new Promise(resolve => setTimeout(resolve, 2000))
+            }
+        }
+    }
+    console.error('[Network] Failed to establish network connection after', maxRetries, 'attempts')
+    // 即使网络连接失败，也继续尝试获取课表（可能在移动网络等不稳定情况下）
+    console.log('[Network] Proceeding with schedule fetch despite network check failure')
+    getScheduleFromCloud()
+    return false
+}
 
 function getScheduleFromCloud() {
     const { net } = require('electron')
@@ -423,26 +504,30 @@ function getScheduleFromCloud() {
 
                 // 检查返回的 JSON 中是否含有 version 键
                 if (scheduleConfigSync.version !== undefined) {
-                    const newVersion = parseInt(scheduleConfigSync.version);
-                    if (!isNaN(newVersion) && newVersion > currentVersion) {
+                    const newVersion = Number.parseInt(scheduleConfigSync.version);
+                    if (!Number.isNaN(newVersion) && newVersion > currentVersion) {
                         currentVersion = newVersion;
                         console.log('Updated version to:', currentVersion);
                     }
                 }
 
                 // 检查是否含有 supportWebSocket 键
-                const supportWebSocket = scheduleConfigSync.supportWebSocket !== undefined ?
-                    Boolean(scheduleConfigSync.supportWebSocket) : true;
+                const supportWebSocket = scheduleConfigSync["supportWebSocket"] !== undefined ?
+                    Boolean(scheduleConfigSync["supportWebSocket"]) : true;
+
+                console.log(`[WebSocket] supportWebSocket=${supportWebSocket}, hasInitialized=${hasInitializedWebSocket}`);
 
                 // 根据 supportWebSocket 值决定是否连接 WebSocket
                 if (!supportWebSocket) {
                     // 如果不支持 WebSocket，则断开现有连接并停止重连机制
+                    console.log('[WebSocket] Server does not support WebSocket, disconnecting...');
                     disconnectWebSocket();
-                } else {
-                    // 如果支持 WebSocket，确保 WebSocket 连接正常
-                    if (!ws || ws.readyState !== WebSocket.OPEN) {
-                        connect();
+                } else if (!hasInitializedWebSocket || !ws || ws.readyState !== WebSocket.OPEN) {
+                    console.log('[WebSocket] Server supports WebSocket, connecting...');
+                    if (!hasInitializedWebSocket) {
+                        hasInitializedWebSocket = true;
                     }
+                    connect();
                 }
 
                 if (win && !win.isDestroyed()) win.webContents.send('newConfig', scheduleConfigSync)
@@ -465,11 +550,10 @@ app.whenReady().then(() => {
     createWindow()
     Menu.setApplicationMenu(null)
     setupAutoUpdater()
+    // 先进行网络连接检查，然后获取课表数据
+    getScheduleFromCloudWithRetry(3);
     win.webContents.on('did-finish-load', () => {
         win.webContents.send('getWeekIndex');
-        if (store.get("isFromCloud", false)) {
-            setTimeout(getScheduleFromCloud, 5000)
-        }
 
     })
     // powerMonitor 事件无 preventDefault
