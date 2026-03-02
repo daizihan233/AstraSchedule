@@ -121,6 +121,32 @@ function scheduleReconnect() {
     }, delay);
 }
 
+// 在主进程中直接更新 Tray Tooltip 的辅助函数
+let websocketDisabled = false; // 全局标志，表示 WebSocket 是否被禁用
+let currentConnectionState = false; // 全局标志，记录当前连接状态
+
+function updateTrayTooltip(connected, forceGreen) {
+    // 无论 tray 是否存在，都更新全局状态
+    currentConnectionState = connected;
+    websocketDisabled = forceGreen || false;
+
+    if (!tray) return;
+
+    const baseTooltip = `星程 - by KuoHu - ${app.getVersion()}`;
+
+    let statusText;
+    if (forceGreen) {
+        statusText = '在线 (Serverless)';
+    } else {
+        statusText = connected ? '在线' : '离线';
+    }
+
+    let tooltipText = `${baseTooltip} - 状态: ${statusText}`;
+
+    tray.setToolTip(tooltipText);
+    console.log('[Main] Tray tooltip updated to:', tooltipText);
+}
+
 // 断开 WebSocket 连接并停止重连机制
 function disconnectWebSocket() {
     if (ws) {
@@ -150,6 +176,9 @@ function disconnectWebSocket() {
             // 同时更新tray tooltip
             win.webContents.send('update-tray-status', {connected: false, forceGreen: true});
         }
+
+        // 直接在主进程中更新 Tooltip
+        updateTrayTooltip(false, true);
 
         console.log('WebSocket disconnected and reconnection disabled');
     }
@@ -187,6 +216,9 @@ function connect(rejectUnauthorized = true, resetErrorFlag = false) {
                 // 同时更新tray tooltip
                 win.webContents.send('update-tray-status', {connected: false});
             }
+
+            // 直接在主进程中更新 Tooltip
+            updateTrayTooltip(false, websocketDisabled);
 
             if (rejectUnauthorized) {
                 // 尝试连接不验证证书
@@ -238,6 +270,9 @@ function connect(rejectUnauthorized = true, resetErrorFlag = false) {
             // 同时更新tray tooltip
             win.webContents.send('update-tray-status', {connected: true, forceGreen: forceGreen});
         }
+
+        // 直接在主进程中更新 Tooltip
+        updateTrayTooltip(true, websocketDisabled);
     })
     // 处理接收到的消息
     ws.on('message', (message) => {
@@ -259,6 +294,9 @@ function connect(rejectUnauthorized = true, resetErrorFlag = false) {
             // 同时更新tray tooltip
             win.webContents.send('update-tray-status', {connected: false, forceGreen: websocketDisabled});
         }
+
+        // 直接在主进程中更新 Tooltip
+        updateTrayTooltip(false, websocketDisabled);
         // 无条件进行重连，不区分关闭原因
         scheduleReconnect();
 
@@ -518,10 +556,14 @@ function getScheduleFromCloud() {
                 console.log(`[WebSocket] supportWebSocket=${supportWebSocket}, hasInitialized=${hasInitializedWebSocket}`);
 
                 // 根据 supportWebSocket 值决定是否连接 WebSocket
+                websocketDisabled = !supportWebSocket; // 更新全局状态
+
                 if (!supportWebSocket) {
                     // 如果不支持 WebSocket，则断开现有连接并停止重连机制
                     console.log('[WebSocket] Server does not support WebSocket, disconnecting...');
                     disconnectWebSocket();
+                    // 无论如何都要更新 Tooltip 状态，确保 Serverless 提示正确显示
+                    updateTrayTooltip(false, true);
                 } else if (!hasInitializedWebSocket || !ws || ws.readyState !== WebSocket.OPEN) {
                     console.log('[WebSocket] Server supports WebSocket, connecting...');
                     if (!hasInitializedWebSocket) {
@@ -575,6 +617,14 @@ ipcMain.handle('readUserConfig', () => readUserConfigSafe())
 ipcMain.handle('getUserConfigPath', () => getUserConfigPath())
 
 ipcMain.on('getWeekIndex', (e, arg) => {
+    // 销毁旧的 Tray 实例，避免重复创建和状态丢失
+    if (tray) {
+        try {
+            tray.destroy();
+        } catch (err) {
+            console.error('Failed to destroy tray:', err);
+        }
+    }
     tray = new Tray(asset('image', 'icon.png'))
     template = [
         {
@@ -793,7 +843,8 @@ ipcMain.on('getWeekIndex', (e, arg) => {
     ]
     template[arg]?.checked !== undefined && (template[arg].checked = true)
     form = Menu.buildFromTemplate(template)
-    tray.setToolTip('星程 - by KuoHu - ' + app.getVersion())
+    // 恢复之前的 ToolTip 状态
+    updateTrayTooltip(currentConnectionState, websocketDisabled)
     function trayClicked() {
         tray.popUpContextMenu(form)
     }
@@ -920,8 +971,6 @@ ipcMain.on('RequestSyncConfig', () => {
 })
 
 // 处理来自渲染进程的tray状态更新请求
-// 跟踪 WebSocket 是否被禁用
-let websocketDisabled = false;
 
 ipcMain.on('update-tray-status', (e, arg) => {
     if (tray) {

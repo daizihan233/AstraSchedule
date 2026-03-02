@@ -300,7 +300,7 @@ function setBackgroundDisplay() {
 // 格式化课程名称，将"@"符号替换为下标标签
 function formatFullName(fullName) {
     if (!fullName || typeof fullName !== 'string') return fullName;
-    return fullName.replace(/@(.+)/g, '<sub>$1</sub>');
+    return fullName.replaceAll(/@(.+)/g, '<sub>$1</sub>');
 }
 
 function setCountdownerContent() {
@@ -401,9 +401,6 @@ function setCountdownerPosition() {
     countdownContainer.style.left = offset.x + 'px';
     countdownContainer.style.top = offset.y + 'px';
     countdownContainer.style.transform = 'none';
-
-    // 强制重绘，确保位置立即生效
-    countdownContainer.offsetHeight;
 
     // 恢复过渡效果
     countdownContainer.style.transition = originalTransition;
@@ -883,9 +880,9 @@ ipcRenderer.on('ws-status', (e, arg) => {
     const forceGreen = arg.forceGreen || false;
 
     // 设置全局标志，表示 WebSocket 已被禁用并应保持绿色显示
-    window.websocketDisabled = forceGreen;
+    globalThis.websocketDisabled = forceGreen;
 
-    console.log('[Renderer] WebSocket status changed:', wsConnected, 'forceGreen:', forceGreen, 'websocketDisabled:', window.websocketDisabled);
+    console.log('[Renderer] WebSocket status changed:', wsConnected, 'forceGreen:', forceGreen, 'websocketDisabled:', globalThis.websocketDisabled);
 
     // 如果是连接状态变化，更新UI状态
     if (wasConnected !== wsConnected || forceGreen) {
@@ -904,7 +901,7 @@ ipcRenderer.on('ws-status', (e, arg) => {
 // 根据连接状态更新UI颜色
 function updateUIColorsForConnectionStatus(connected) {
     // 检查是否应强制显示为绿色
-    const shouldForceGreen = window.websocketDisabled || false;
+    const shouldForceGreen = globalThis.websocketDisabled || false;
     console.log('[Renderer] Updating UI colors for connection status:', connected, 'forceGreen:', shouldForceGreen);
 
     if (currentFullName && scheduleData?.currentHighlight?.type) {
@@ -932,7 +929,7 @@ function updateUIColorsForConnectionStatus(connected) {
 // 更新miniCountdown中的currentClass颜色
 function updateMiniCountdownColor(connected) {
     // 检查是否应强制显示为绿色
-    const shouldForceGreen = window.websocketDisabled || false;
+    const shouldForceGreen = globalThis.websocketDisabled || false;
     const effectiveConnected = shouldForceGreen ? true : connected;
 
     if (miniCountdown && miniCountdown.style.display !== 'none') {
@@ -947,7 +944,7 @@ function updateMiniCountdownColor(connected) {
 // 更新课表高亮颜色
 function updateClassHighlightColors(connected, forceGreen = false) {
     // 检查是否应强制显示为绿色
-    const shouldForceGreen = forceGreen || window.websocketDisabled || false;
+    const shouldForceGreen = forceGreen || globalThis.websocketDisabled || false;
     const effectiveConnected = shouldForceGreen ? true : connected;
 
     console.log('[Renderer] Updating highlighted element color for connection status:', connected, 'forceGreen:', forceGreen, 'effectiveConnected:', effectiveConnected);
@@ -969,7 +966,6 @@ function updateClassHighlightColors(connected, forceGreen = false) {
             highlightedElement.style.color = 'rgba(0, 255, 10, 1)';
             // 重新启动动画
             highlightedElement.classList.remove('upcoming');
-            void highlightedElement.offsetWidth; // 强制重排以重新启动动画
             highlightedElement.classList.add('upcoming');
             console.log('[Renderer] Set upcoming class to connected state with green animation');
         } else {
@@ -988,9 +984,9 @@ function updateClassHighlightColors(connected, forceGreen = false) {
 
 // 处理从主进程发送的tray状态更新事件
 ipcRenderer.on('update-tray-status', (e, arg) => {
-    // 实际上这个事件处理在这里不需要，因为更新tray tooltip是主进程的任务
-    // 渲染进程只需要关注UI颜色更新
+    // 将状态信息转发回主进程以更新tray tooltip
     console.log('[Renderer] Tray status update received:', arg);
+    ipcRenderer.send('update-tray-status', arg);
 });
 // 辅助：确保 banner 高度可见
 function ensureBannerHeight(){
