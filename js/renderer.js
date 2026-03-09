@@ -431,7 +431,6 @@ function setSidebar() {
         corunit.innerText = '天'
     }
     leftSidebar.style.display = scheduleConfig.week_display ? 'block' : 'none'
-    ipcRenderer.send('getWeather', false)
 }
 
 function tick(reset = false) {
@@ -448,6 +447,8 @@ function tick(reset = false) {
         })
         setSidebar()
         setBackgroundDisplay()
+        // 仅在日程状态发生变化时重新拉取天气
+        ipcRenderer.send('getWeather', false)
         // 状态改变时（进入下一个日程），再次调用 getScheduleFromCloud
         ipcRenderer.send('getScheduleFromCloud');
     } else if (lastScheduleData.wsConnected !== wsConnected) {
@@ -779,10 +780,7 @@ ipcRenderer.on('newConfig', (e, arg) => {
     if (scheduleConfig.weather_alert_override) {
         const ok = recomputeWeatherWarnFromLast();
         if (!ok) {
-            try {
-                ipcRenderer.send('getWeather', false)
-            } catch {
-            }
+            // 无天气缓存时保持静默，不在配置变化时主动触发天气请求
         }
     }
     setBanner();
@@ -857,9 +855,12 @@ ipcRenderer.on('updateWeather', () => {
 })
 
 ipcRenderer.on('broadcastSyncConfig', () => {
-
+    // Serverless 模式下直接拉取课表，无需广播
+    if (globalThis.websocketDisabled) {
+        ipcRenderer.send('getScheduleFromCloud');
+        return;
+    }
     ipcRenderer.send('RequestSyncConfig', false)
-
 })
 
 

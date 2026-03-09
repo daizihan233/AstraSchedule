@@ -375,6 +375,10 @@ function isSemver(v) {
 let updaterInitialized = false
 function setupAutoUpdater() {
     try {
+        if (!store.get('isAutoUpdate', true)) {
+            console.log('[Updater] disabled by user setting');
+            return;
+        }
         if (!app.isPackaged) return;
         const v = app.getVersion();
         if (!isSemver(v)) {
@@ -680,6 +684,19 @@ ipcMain.on('getWeekIndex', (e, arg) => {
             }
         },
         {
+            label: '自动更新',
+            type: 'checkbox',
+            checked: store.get('isAutoUpdate', true),
+            click: (e) => {
+                store.set('isAutoUpdate', e.checked)
+                if (e.checked) {
+                    setupAutoUpdater()
+                } else {
+                    console.log('[Updater] auto-update disabled by user');
+                }
+            }
+        },
+        {
             icon: asset('image', 'toggle.png'),
             label: '云端服务',
             click: () => {
@@ -738,6 +755,11 @@ ipcMain.on('getWeekIndex', (e, arg) => {
             icon: asset('image', 'toggle.png'),
             label: '更新课表',
             click: () => {
+                // Serverless 模式下直接拉取课表，无需广播
+                if (websocketDisabled) {
+                    getScheduleFromCloud();
+                    return;
+                }
                 win.webContents.send('broadcastSyncConfig')
             }
         },
@@ -853,6 +875,7 @@ ipcMain.on('getWeekIndex', (e, arg) => {
     tray.setContextMenu(form)
     win.webContents.send('ClassCountdown', store.get('isDuringClassCountdown', true))
     win.webContents.send('ClassHidden', store.get('isDuringClassHidden', true))
+    win.webContents.send('AlwaysMinimized', store.get('isAlwaysMinimized', false))
 })
 
 // 提供鼠标位置与窗口边界给渲染进程（用于穿透下的悬停检测）
@@ -888,7 +911,44 @@ ipcMain.on('pop', () => {
     tray.popUpContextMenu(form)
 })
 
-ipcMain.on('getWeather', () => {
+const MAX_WEATHER_RETRIES = 5
+const WEATHER_RETRY_DELAY_MS = 5000
+let weatherRequestInFlight = false
+let weatherRetryTimer = null
+let weatherRetryCount = 0
+
+function clearWeatherRetryTimer() {
+    if (weatherRetryTimer) {
+        clearTimeout(weatherRetryTimer)
+        weatherRetryTimer = null
+    }
+}
+
+function finishWeatherCycle() {
+    weatherRequestInFlight = false
+    clearWeatherRetryTimer()
+    weatherRetryCount = 0
+}
+
+function scheduleWeatherRetry() {
+    weatherRequestInFlight = false
+    weatherRetryCount += 1
+    if (weatherRetryCount >= MAX_WEATHER_RETRIES) {
+        // 达到最大重试次数后静默停止，不提示、不改变 UI
+        finishWeatherCycle()
+        return
+    }
+    clearWeatherRetryTimer()
+    weatherRetryTimer = setTimeout(() => {
+        weatherRetryTimer = null
+        requestWeatherWithRetry()
+    }, WEATHER_RETRY_DELAY_MS)
+}
+
+function requestWeatherWithRetry() {
+    if (weatherRequestInFlight) return
+    weatherRequestInFlight = true
+
     const { net } = require('electron')
     const { agreement } = getProtocols()
     const request = net.request(
@@ -905,24 +965,29 @@ ipcMain.on('getWeather', () => {
                 try {
                     const weatherData = JSON.parse(raw)
                     if (win && !win.isDestroyed()) win.webContents.send('setWeather', weatherData)
-                } catch (e) {
-                    console.error('Weather JSON parse error:', e)
-                    // 不显示错误弹窗，仅记录错误并重试
-                    setTimeout(() => win?.webContents?.send('updateWeather'), 5000)
+                    finishWeatherCycle()
+                } catch {
+                    // 解析失败按失败重试，静默处理
+                    scheduleWeatherRetry()
                 }
             } else {
-                console.log(`Weather API non-2xx: ${status}, retry later`)
-                // 不显示错误弹窗，仅记录错误并重试
-                setTimeout(() => win?.webContents?.send('updateWeather'), 5000)
+                // 非 2xx 仅重试，不提示、不改变 UI
+                scheduleWeatherRetry()
             }
         })
     })
-    request.on('error', (error) => {
-        console.error('Weather API error:', error, 'retry later')
-        // 不显示错误弹窗，仅记录错误并重试
-        setTimeout(() => win?.webContents?.send('updateWeather'), 5000)
+    request.on('error', () => {
+        // 网络错误仅重试，不提示、不改变 UI
+        scheduleWeatherRetry()
     })
     request.end()
+}
+
+ipcMain.on('getWeather', () => {
+    // 仅由触发方决定何时拉取；这里统一执行“最多 5 次”的静默重试策略
+    if (weatherRequestInFlight || weatherRetryTimer) return
+    weatherRetryCount = 0
+    requestWeatherWithRetry()
 })
 
 ipcMain.on('RequestSyncConfig', () => {
