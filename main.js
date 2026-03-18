@@ -9,6 +9,10 @@ const prompt = require('electron-prompt');
 const Store = require('electron-store');
 const { DisableMinimize } = require('electron-disable-minimize');
 const store = new Store();
+const {countdownState} = require('./main/countdown/state');
+const {registerCountdownIpc} = require('./main/countdown/ipc');
+const {fetchCountdownData, pushCountdownItems} = require('./main/countdown/service');
+const {showCountdownWindow, hideCountdownWindow} = require('./main/countdown/window');
 
 
 
@@ -80,6 +84,67 @@ function getServer() {
 }
 let classId = String(store.get("class", "39/2023/1"))
 console.log('Class:', classId, 'Server:', getServer(), 'Secure:', store.get("isSecureConnection", true));
+
+const countdownCtx = {
+    BrowserWindow,
+    screen,
+    ipcMain,
+    net: electron.net,
+    state: countdownState,
+    getServer,
+    getProtocols,
+    getClassId: () => classId,
+};
+
+async function refreshCountdownWindow(reason = 'manual') {
+    if (countdownState.loading) return;
+    countdownState.loading = true;
+    try {
+        const result = await fetchCountdownData(countdownCtx);
+        if (result?.loading) {
+            countdownState.latestItems = [];
+            hideCountdownWindow(countdownState);
+            return;
+        }
+
+        const items = Array.isArray(result?.items) ? result.items : [];
+        if (items.length === 0) {
+            countdownState.latestItems = [];
+            hideCountdownWindow(countdownState);
+            return;
+        }
+
+        countdownState.latestItems = items;
+        const cwin = showCountdownWindow(countdownCtx);
+        if (cwin && !cwin.isDestroyed() && cwin.webContents && !cwin.webContents.isDestroyed()) {
+            if (cwin.webContents.isLoading()) {
+                cwin.webContents.once('did-finish-load', () => {
+                    pushCountdownItems(countdownState);
+                });
+            } else {
+                pushCountdownItems(countdownState);
+            }
+        }
+        console.log(`[Countdown] refreshed by ${reason}, items=${items.length}`);
+    } catch (e) {
+        console.error('[Countdown] refresh failed:', e?.message || e);
+        countdownState.latestItems = [];
+        hideCountdownWindow(countdownState);
+    } finally {
+        countdownState.loading = false;
+    }
+}
+
+function startCountdownPolling() {
+    if (countdownState.pollTimer) {
+        clearInterval(countdownState.pollTimer);
+        countdownState.pollTimer = null;
+    }
+    countdownState.pollTimer = setInterval(() => {
+        refreshCountdownWindow('poll').catch(() => {
+        });
+    }, 30000);
+}
 
 const WebSocket = require('ws');
 let ws;
@@ -281,6 +346,8 @@ function connect(rejectUnauthorized = true, resetErrorFlag = false) {
         if (text === 'SyncConfig') {
             console.log('SyncConfig')
             getScheduleFromCloud()
+            refreshCountdownWindow('ws-sync').catch(() => {
+            })
         }
     })
     // 处理连接关闭
@@ -577,6 +644,8 @@ function getScheduleFromCloud() {
                 }
 
                 if (win && !win.isDestroyed()) win.webContents.send('newConfig', scheduleConfigSync)
+                refreshCountdownWindow('schedule-sync').catch(() => {
+                })
             } catch (err) {
                 console.error('getScheduleFromCloud JSON parse error:', err)
                 // 不显示错误弹窗，仅记录错误
@@ -595,9 +664,13 @@ function getScheduleFromCloud() {
 app.whenReady().then(() => {
     createWindow()
     Menu.setApplicationMenu(null)
+    registerCountdownIpc(countdownCtx)
     setupAutoUpdater()
     // 先进行网络连接检查，然后获取课表数据
     getScheduleFromCloudWithRetry();
+    refreshCountdownWindow('startup').catch(() => {
+    })
+    startCountdownPolling()
     win.webContents.on('did-finish-load', () => {
         win.webContents.send('getWeekIndex');
 
@@ -612,6 +685,13 @@ app.whenReady().then(() => {
     const handle = win.getNativeWindowHandle();
     try { DisableMinimize(handle) } catch (e) { console.warn('DisableMinimize failed:', e?.message || e) }
     setAutoLaunch()
+})
+
+app.on('before-quit', () => {
+    if (countdownState.pollTimer) {
+        clearInterval(countdownState.pollTimer)
+        countdownState.pollTimer = null
+    }
 })
 
 
@@ -1138,6 +1218,8 @@ ipcMain.on('setClass', (e, arg) => {
         // 同步内存中的 classId，随后重连以生效
         classId = val
         console.log('[Class] set to', val)
+        refreshCountdownWindow('class-changed').catch(() => {
+        })
         try {
             ws?.close?.()
         } catch {
