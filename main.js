@@ -96,7 +96,31 @@ const countdownCtx = {
     getClassId: () => classId,
 };
 
+const COUNTDOWN_STARTUP_RETRY_DELAY_MS = 8000;
+
+function clearCountdownStartupRetryTimer() {
+    if (countdownState.startupRetryTimer) {
+        clearTimeout(countdownState.startupRetryTimer);
+        countdownState.startupRetryTimer = null;
+    }
+}
+
+function scheduleCountdownStartupRetry(reason = 'unknown') {
+    if (countdownState.firstSuccessLocked) return;
+    if (countdownState.startupRetryTimer) return;
+    countdownState.startupRetryTimer = setTimeout(() => {
+        countdownState.startupRetryTimer = null;
+        refreshCountdownWindow('startup-retry').catch(() => {
+        });
+    }, COUNTDOWN_STARTUP_RETRY_DELAY_MS);
+    console.warn(`[Countdown] schedule startup retry in ${COUNTDOWN_STARTUP_RETRY_DELAY_MS}ms by ${reason}`);
+}
+
 async function refreshCountdownWindow(reason = 'manual') {
+    if (countdownState.firstSuccessLocked) {
+        // 首次成功后保持当前显示状态，不再触发刷新/隐藏逻辑
+        return;
+    }
     if (countdownState.loading) return;
     countdownState.loading = true;
     try {
@@ -104,6 +128,8 @@ async function refreshCountdownWindow(reason = 'manual') {
         if (result?.loading) {
             countdownState.latestItems = [];
             hideCountdownWindow(countdownState);
+            scheduleCountdownStartupRetry(`${reason}-loading`);
+            console.log(`[Countdown] hidden by ${reason}: backend loading`);
             return;
         }
 
@@ -111,6 +137,8 @@ async function refreshCountdownWindow(reason = 'manual') {
         if (items.length === 0) {
             countdownState.latestItems = [];
             hideCountdownWindow(countdownState);
+            scheduleCountdownStartupRetry(`${reason}-empty`);
+            console.log(`[Countdown] hidden by ${reason}: empty items from backend`);
             return;
         }
 
@@ -125,11 +153,20 @@ async function refreshCountdownWindow(reason = 'manual') {
                 pushCountdownItems(countdownState);
             }
         }
+        countdownState.firstSuccessLocked = true;
+        clearCountdownStartupRetryTimer();
+        if (countdownState.pollTimer) {
+            clearInterval(countdownState.pollTimer);
+            countdownState.pollTimer = null;
+        }
+        console.log('[Countdown] first success reached, lock display state and stop further refresh triggers');
         console.log(`[Countdown] refreshed by ${reason}, items=${items.length}`);
     } catch (e) {
         console.error('[Countdown] refresh failed:', e?.message || e);
         countdownState.latestItems = [];
         hideCountdownWindow(countdownState);
+        scheduleCountdownStartupRetry(`${reason}-error`);
+        console.warn(`[Countdown] hidden by ${reason}: request failed`);
     } finally {
         countdownState.loading = false;
     }
@@ -670,7 +707,6 @@ app.whenReady().then(() => {
     getScheduleFromCloudWithRetry();
     refreshCountdownWindow('startup').catch(() => {
     })
-    startCountdownPolling()
     win.webContents.on('did-finish-load', () => {
         win.webContents.send('getWeekIndex');
 
@@ -688,6 +724,7 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+    clearCountdownStartupRetryTimer()
     if (countdownState.pollTimer) {
         clearInterval(countdownState.pollTimer)
         countdownState.pollTimer = null

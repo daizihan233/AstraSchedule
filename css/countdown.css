@@ -18,6 +18,7 @@ html, body {
     --outer-gap: 14px;
     --top-safe-gap: 42px;
     --pane-edge-gap: 2px;
+    --primary-font-scale: 1.5;
     position: fixed;
     inset: 0;
     border-radius: 18px;
@@ -96,6 +97,7 @@ html, body {
 .primary {
     height: 100%;
     background: rgba(255, 255, 255, 0.12);
+    gap: 12px;
 }
 
 .name {
@@ -105,7 +107,7 @@ html, body {
 }
 
 .primary .name {
-    font-size: 28px;
+    font-size: calc(34px * var(--primary-font-scale));
 }
 
 .days {
@@ -115,7 +117,12 @@ html, body {
 }
 
 .primary .days {
-    font-size: 62px;
+    font-size: calc(84px * var(--primary-font-scale));
+    line-height: 1;
+}
+
+.primary .sentence {
+    font-size: calc(20px * var(--primary-font-scale));
 }
 
 .sentence {

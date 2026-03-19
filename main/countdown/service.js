@@ -77,11 +77,35 @@ function requestJsonByNet(net, url) {
     return new Promise((resolve, reject) => {
         const req = net.request({method: 'GET', url});
         let raw = '';
+        let settled = false;
+        const timeoutMs = 12000;
+        const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            try {
+                req.abort();
+            } catch {
+            }
+            reject(new Error('request timeout'));
+        }, timeoutMs);
+
+        function finishOnce(fn) {
+            return (arg) => {
+                if (settled) return;
+                settled = true;
+                try {
+                    clearTimeout(timer);
+                } catch {
+                }
+                fn(arg);
+            };
+        }
+
         req.on('response', (res) => {
             res.on('data', (chunk) => {
                 raw += chunk.toString();
             });
-            res.on('end', () => {
+            res.on('end', finishOnce(() => {
                 const code = res.statusCode || 0;
                 if (code < 200 || code >= 300) {
                     reject(new Error(`HTTP ${code}`));
@@ -93,9 +117,9 @@ function requestJsonByNet(net, url) {
                 } catch (e) {
                     reject(e);
                 }
-            });
+            }));
         });
-        req.on('error', reject);
+        req.on('error', finishOnce(reject));
         req.end();
     });
 }

@@ -3,6 +3,8 @@ const countdownState = {
     initialized: false,
     minimized: false,
     pollTimer: null,
+    startupRetryTimer: null,
+    firstSuccessLocked: false,
     latestItems: [],
     loading: false,
 };
