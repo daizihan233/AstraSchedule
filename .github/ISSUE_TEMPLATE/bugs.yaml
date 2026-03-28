@@ -9,13 +9,13 @@ body:
     attributes:
       value: |
         ## 感谢您愿意花一些时间来填写这个内容！
-        ## 以下是一些注意事项，请务必阅读让我能够更容易处理
+        ## 以下是一些注意事项，能让提交更快被处理
 
-        ### ❗ | 确定没有相同问题的ISSUE已被提出。
+        ### ❗ | 确定没有相同问题的 ISSUE 已被提出。
         ### ❔ | 尽量使用截图而非拍屏，如果有必要请使用录屏
         ### ⚠ | 如果涉及敏感信息，请自行打码
 
-        ## 如果您不知道如何有效、精准地表述，我建议您先阅读《提问的智慧》
+        ## 如果您不知道如何有效、精准地表述，建议您先阅读《提问的智慧》
         链接: [《提问的智慧》](https://github.com/ryanhanwu/How-To-Ask-Questions-The-Smart-Way/blob/main/README-zh_CN.md)
         ---
   - type: checkboxes
@@ -36,7 +36,7 @@ body:
     id: captcha
     attributes:
       label: |
-        为了确保你是人类，请阅读并勾选以下内容，如有错选本仓库所有者可能会直接关闭此 Issue。
+        为了确保你是人类，请阅读并勾选以下内容，如有错选本仓库所有者可能会直接关闭此 Issue。Just kidding!
       options:
         - label: "我保证我已经认真阅读了以上说明，并已经勾选上面的选项"  # y
         - label: "我不确定我有认真阅读了以上说明，并没有勾选了上面的选项"  # x
@@ -57,7 +57,7 @@ body:
     id: config-type
     attributes:
       label: 您使用的配置文件类别是？
-      description: 选择配置文件的获取方式
+      description: 选择配置文件的获取方式（本地文件方式在未来可能会被废弃！）
       options:
         - 云端链接
         - 本地文件
@@ -103,6 +103,20 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: question-type
+    attributes:
+      label: 您反馈的问题属于以下哪个部分？
+      description: 如果您确实不知道属于什么，可以选择：“我不确定”
+      options:
+        - 客户端（AstraSchedule）
+        - 管理端（AstraScheduleWeb）
+        - 服务端（新版，AstraScheduleServerGo）
+        - 服务端（旧版，AstraScheduleServer，可能废弃！）
+        - 我不确定
+    validations:
+      required: true
+
   # Input | Reproduce
   - type: textarea
     id: reproduce-steps
@@ -110,7 +124,7 @@ body:
       label: 重现步骤
       description: |
         我需要执行哪些操作才能让 bug 出现？
-        简洁清晰的重现步骤能够帮助我更迅速地定位问题所在。
+        简洁清晰的重现步骤能够帮助更迅速地定位问题所在。
     validations:
       required: true
 

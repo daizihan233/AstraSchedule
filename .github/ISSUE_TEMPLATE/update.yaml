@@ -1,7 +1,7 @@
 name: 给课表增添装饰
 description: 点击此项使课表更好用
-title: '[新功能?]: '
-labels: [ "新功能?" ]
+title: '[功能++?]: '
+labels: [ "功能++？" ]
 assignees: [ "daizihan233" ]
 
 body:
@@ -58,15 +58,16 @@ body:
   - type: input
     id: name
     attributes:
-      label: 新功能名称
+      label: 功能名称
+      description: 你要对哪个功能进行增强？
     validations:
       required: true
 
   - type: textarea
     id: description
     attributes:
-      label: 新功能描述
-      description: 简述这个功能是干嘛的
+      label: 功能描述
+      description: 简述这个增强功能是干嘛的
     validations:
       required: true
 
@@ -74,7 +75,7 @@ body:
     id: mean
     attributes:
       label: 新功能意义
-      description: 简述这个功能的意义在哪
+      description: 简述这个增强功能的意义在哪
     validations:
       required: true
 
