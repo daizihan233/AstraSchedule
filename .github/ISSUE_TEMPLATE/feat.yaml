@@ -78,6 +78,21 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: part-type
+    attributes:
+      label: 您反馈的建议属于以下哪个部分？
+      description: 如果您确实不知道属于什么，可以选择 “我不确定”；如果需要多个部分同时修改，应该选择 “复合”
+      options:
+        - 客户端（AstraSchedule）
+        - 管理端（AstraScheduleWeb）
+        - 服务端（新版，AstraScheduleServerGo）
+        - 服务端（旧版，AstraScheduleServer，可能废弃！）
+        - 复合
+        - 我不确定
+    validations:
+      required: true
+
   - type: textarea
     id: how-to
     attributes:
