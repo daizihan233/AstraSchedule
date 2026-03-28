@@ -104,7 +104,7 @@ body:
       required: true
 
   - type: dropdown
-    id: question-type
+    id: part-type
     attributes:
       label: 您反馈的问题属于以下哪个部分？
       description: 如果您确实不知道属于什么，可以选择：“我不确定”
