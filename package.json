@@ -6,7 +6,7 @@
   "author": "KuoHu",
   "license": "GPLv3",
   "scripts": {
-    "debug": "chcp 65001 && electron . --enable-logging",
+    "debug": "electron . --enable-logging",
     "rebuild": "electron-rebuild",
     "build": "electron-builder --win --ia32",
     "ci": "electron-builder --win --ia32 --publish always",
