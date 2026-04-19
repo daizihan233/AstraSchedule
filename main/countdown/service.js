@@ -49,26 +49,35 @@ function filterScheduleItem(it, classId) {
     const name = String(it?.name || '').trim();
     const date = String(it?.date || '').trim();
     if (!name || !date) return null;
+
     const localDate = parseYmdLocal(date);
     if (!localDate) return null;
+
     const daysLeft = dayDiffLocalToday(localDate);
     if (daysLeft < 0) return null;
-    return {name, date, priority: Number(it?.priority || 0), daysLeft};
+
+    return {name, date, priority: Number(it?.priority || 0), daysLeft}
+}
+
+function isScopeMatched(rec, classId) {
+    const scopes = rec?.scope
+    if (!Array.isArray(scopes) || scopes.length === 0) return true
+    return scopes.some(s => scopeMatch(s, classId))
 }
 
 function collectEffectiveSchedules(records, classId) {
-    const out = [];
-    for (const rec of Array.isArray(records) ? records : []) {
-        const scopes = Array.isArray(rec.scope) ? rec.scope : [];
-        if (scopes.length > 0 && !scopes.some((s) => scopeMatch(s, classId))) continue;
-        const schedules = Array.isArray(rec.schedules) ? rec.schedules : [];
+    const validRecords = (records || []).filter(rec => isScopeMatched(rec, classId))
+    const out = []
+    for (const rec of validRecords) {
+        const schedules = rec?.schedules
+        if (!Array.isArray(schedules)) continue
         for (const it of schedules) {
-            const item = filterScheduleItem(it, classId);
-            if (item) out.push(item);
+            const item = filterScheduleItem(it, classId)
+            if (item) out.push(item)
         }
     }
-    out.sort((a, b) => b.priority - a.priority || a.daysLeft - b.daysLeft);
-    return out;
+    out.sort((a, b) => b.priority - a.priority || a.daysLeft - b.daysLeft)
+    return out
 }
 
 function requestJsonByNet(net, url) {

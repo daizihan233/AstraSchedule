@@ -658,7 +658,8 @@ function getScheduleFromCloud() {
                 }
 
                 // 检查是否含有 supportWebSocket 键
-                const supportWebSocket = scheduleConfigSync["supportWebSocket"] === undefined || !!scheduleConfigSync["supportWebSocket"];
+                const rawWs = scheduleConfigSync["supportWebSocket"]
+                const supportWebSocket = rawWs === undefined || !!rawWs
 
                 console.log(`[WebSocket] supportWebSocket=${supportWebSocket}, hasInitialized=${hasInitializedWebSocket}`);
 
