@@ -45,39 +45,32 @@ function scopeMatch(scope, classId) {
     return false;
 }
 
-function filterScheduleItem(it, classId) {
-    const name = String(it?.name || '').trim();
-    const date = String(it?.date || '').trim();
-    if (!name || !date) return null;
-
-    const localDate = parseYmdLocal(date);
-    if (!localDate) return null;
-
-    const daysLeft = dayDiffLocalToday(localDate);
-    if (daysLeft < 0) return null;
-
-    return {name, date, priority: Number(it?.priority || 0), daysLeft}
-}
-
-function isScopeMatched(rec, classId) {
-    const scopes = rec?.scope
-    if (!Array.isArray(scopes) || scopes.length === 0) return true
-    return scopes.some(s => scopeMatch(s, classId))
-}
-
 function collectEffectiveSchedules(records, classId) {
-    const validRecords = (records || []).filter(rec => isScopeMatched(rec, classId))
-    const out = []
-    for (const rec of validRecords) {
-        const schedules = rec?.schedules
-        if (!Array.isArray(schedules)) continue
+    const out = [];
+    for (const rec of Array.isArray(records) ? records : []) {
+        const scopes = Array.isArray(rec.scope) ? rec.scope : [];
+        if (scopes.length > 0 && !scopes.some((s) => scopeMatch(s, classId))) {
+            continue;
+        }
+        const schedules = Array.isArray(rec.schedules) ? rec.schedules : [];
         for (const it of schedules) {
-            const item = filterScheduleItem(it, classId)
-            if (item) out.push(item)
+            const name = String(it?.name || '').trim();
+            const date = String(it?.date || '').trim();
+            const priority = Number(it?.priority || 0);
+            if (!name || !date) continue;
+            const localDate = parseYmdLocal(date);
+            if (!localDate) continue;
+            const daysLeft = dayDiffLocalToday(localDate);
+            // 过期日程自动隐藏（仅展示今天及未来）
+            if (daysLeft < 0) continue;
+            out.push({name, date, priority, daysLeft});
         }
     }
-    out.sort((a, b) => b.priority - a.priority || a.daysLeft - b.daysLeft)
-    return out
+    out.sort((a, b) => {
+        if (b.priority !== a.priority) return b.priority - a.priority;
+        return a.daysLeft - b.daysLeft;
+    });
+    return out;
 }
 
 function requestJsonByNet(net, url) {
@@ -140,7 +133,7 @@ async function fetchCountdownData(ctx) {
     const payload = await requestJsonByNet(net, url);
     if (payload?.loading === true) return {loading: true, items: []};
 
-    const hasConfig = payload?.hasConfig === undefined || !!payload.hasConfig;
+    const hasConfig = payload?.hasConfig !== undefined ? !!payload.hasConfig : true;
     if (!hasConfig) return {loading: false, items: []};
 
     const records = Array.isArray(payload?.data) ? payload.data : [];

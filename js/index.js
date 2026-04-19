@@ -1,4 +1,4 @@
-let weekIndex = localStorage.getItem('weekIndex')
+﻿let weekIndex = localStorage.getItem('weekIndex')
 if (weekIndex === null) localStorage.setItem('weekIndex', '0')
 weekIndex = Number(localStorage.getItem('weekIndex'))
 
@@ -93,71 +93,25 @@ function getScheduleData() {
     const divider = scheduleConfig.divider[timetable];
     let scheduleArray = [];
     let currentHighlight = { index: null, type: null, fullName: null, countdown: null, countdownText: null };
-    let nextScheduleName = null;
+    let nextScheduleName = null; // 下一节课的名称
 
     const timeRanges = Object.keys(dayTimetable);
 
     const findUpcoming = (breakIndex, breakRange) => {
-        let breakLabel = findLabelFromTimetable(timeRanges, dayTimetable, breakIndex);
+        // 选择接下来最近的一节课作为 upcoming（高亮位置用下一节课），
+        // 但显示的文字应为当前课间/时段在 timetable 中配置的标签。
+        let breakLabel = '';
+        const curVal = dayTimetable[breakRange];
+        if (typeof curVal !== 'number' && curVal) breakLabel = String(curVal);
+
+        // 如果 timetable 没给当前时段配置标签，则尝试向后找第一个字符串标签做为显示
         if (!breakLabel) {
-            const curVal = dayTimetable[breakRange];
-            if (typeof curVal !== 'number' && curVal) breakLabel = String(curVal);
-            else breakLabel = (scheduleConfig['break_label']) || '课间';
-        }
-
-        const nextClassIdx = findNextClassIndex(timeRanges, dayTimetable, breakIndex + 1);
-        if (nextClassIdx >= 0) {
-            nextScheduleName = getSubjectName(currentSchedule, nextClassIdx);
-            setCurrentHighlightExternal(
-                currentHighlight,
-                scheduleArray.length,
-                'upcoming',
-                breakLabel,
-                breakRange.split('-')[1],
-                currentTime
-            );
-            return true;
-        }
-
-        const dismissalLabel = findUpcomingLabel(timeRanges, dayTimetable, breakIndex + 1, breakRange);
-        setCurrentHighlightExternal(
-            currentHighlight,
-            Math.max(0, currentSchedule.length - 1),
-            'upcoming',
-            dismissalLabel,
-            breakRange.split('-')[1],
-            currentTime,
-            true
-        );
-        return false;
-    }
-
-    for (const [index, timeRange] of timeRanges.entries()) {
-        const [startTime, endTime] = timeRange.split('-');
-        const classIndex = dayTimetable[timeRange];
-
-        if (typeof classIndex === 'number') {
-            const subjectShortName = currentSchedule[classIndex];
-            const subjectFullName = scheduleConfig.subject_name[subjectShortName];
-            scheduleArray.push(subjectShortName);
-
-            if (isClassCurrent(startTime, endTime, currentTime)) {
-                setCurrentHighlightExternal(currentHighlight, scheduleArray.length - 1, 'current', subjectFullName, endTime, currentTime);
-                nextScheduleName = getSubjectName(currentSchedule, findNextClassIndex(timeRanges, dayTimetable, index + 1));
-            }
-        } else if (currentHighlight.index === null && isBreakTime(startTime, endTime, currentTime)) {
-            findUpcoming(index, timeRange);
-        } else if (currentHighlight.index === null && !dayTimetable[timeRange]) {
-            currentHighlight.fullName = currentSchedule[classIndex];
-        }
-    }
-
-    if (currentHighlight.index === null && nextScheduleName === null) {
-        nextScheduleName = getSubjectName(currentSchedule, findNextClassIndex(timeRanges, dayTimetable, 0));
-    }
-
-    return {scheduleArray, currentHighlight, timetable, divider, nextScheduleName};
-}
+            for (let i = breakIndex; i < timeRanges.length; i++) {
+                const v = dayTimetable[timeRanges[i]];
+                if (typeof v !== 'number' && v) {
+                    breakLabel = String(v);
+                    break;
+                }
             }
         }
         // 兜底课间标签
@@ -274,34 +228,4 @@ function formatCountdown(countdownSeconds) {
     const minutes = Math.floor(countdownSeconds / 60);
     const seconds = countdownSeconds % 60;
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-}
-
-function findNextClassIndex(timeRanges, dayTimetable, startIndex) {
-    for (let i = startIndex; i < timeRanges.length; i++) {
-        const idx = dayTimetable[timeRanges[i]];
-        if (typeof idx === 'number') return idx;
-    }
-    return -1;
-}
-
-function findLabelFromTimetable(timeRanges, dayTimetable, startIndex) {
-    for (let i = startIndex; i < timeRanges.length; i++) {
-        const v = dayTimetable[timeRanges[i]];
-        if (typeof v !== 'number' && v) return String(v);
-    }
-    return '';
-}
-
-function findUpcomingLabel(timeRanges, dayTimetable, breakIndex, breakRange) {
-    const label = findLabelFromTimetable(timeRanges, dayTimetable, breakIndex);
-    if (label) return label;
-    const curVal = dayTimetable[breakRange];
-    if (typeof curVal !== 'number' && curVal) return String(curVal);
-    return (scheduleConfig['end_of_day_label']) || '放学';
-}
-
-function getSubjectName(schedule, classIndex) {
-    if (classIndex < 0 || classIndex >= schedule.length) return null;
-    const shortName = schedule[classIndex];
-    return scheduleConfig.subject_name[shortName];
 }
